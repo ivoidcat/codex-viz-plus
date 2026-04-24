@@ -6,6 +6,7 @@ import { getCacheDir, getSessionsDir } from "@/lib/paths";
 import type {
   DailyAgg,
   IndexSnapshot,
+  SessionCostBreakdown,
   SessionSummary,
   SessionTimelineResponse,
   SessionsListResponse,
@@ -16,6 +17,27 @@ import { getDb, migrateDb } from "@/lib/sqlite";
 
 const INDEX_VERSION = 4;
 const SESSION_DIR = "session";
+
+type TokenPricing = {
+  input: number;
+  cachedInput: number | null;
+  output: number;
+};
+
+const MODEL_PRICING: Record<string, TokenPricing> = {
+  "gpt-5.4": { input: 2.5, cachedInput: 0.25, output: 15 },
+  "gpt-5.4-mini": { input: 0.75, cachedInput: 0.075, output: 4.5 },
+  "gpt-5.4-nano": { input: 0.2, cachedInput: 0.02, output: 1.25 },
+  "gpt-5.3-codex": { input: 1.75, cachedInput: 0.175, output: 14 },
+  "gpt-5.2-codex": { input: 1.75, cachedInput: 0.175, output: 14 },
+  "gpt-5.3-chat-latest": { input: 1.75, cachedInput: 0.175, output: 14 },
+  "gpt-5.2-chat-latest": { input: 1.75, cachedInput: 0.175, output: 14 },
+  "gpt-5-codex": { input: 1.25, cachedInput: 0.125, output: 10 },
+  "gpt-5-chat-latest": { input: 1.25, cachedInput: 0.125, output: 10 },
+  "gpt-5": { input: 1.25, cachedInput: 0.125, output: 10 },
+  "gpt-5-mini": { input: 0.25, cachedInput: 0.025, output: 2 },
+  "gpt-5-nano": { input: 0.05, cachedInput: 0.005, output: 0.4 }
+};
 
 let inMemoryIndex: IndexSnapshot | null = null;
 let inFlight: Promise<IndexSnapshot> | null = null;
@@ -39,6 +61,12 @@ function toIso(ts: unknown): string | null {
 function dayKeyFromIso(iso: string | null) {
   if (!iso) return "unknown";
   return iso.slice(0, 10);
+}
+
+function resolveDayParam(day: string | null | undefined) {
+  if (!day) return null;
+  if (day === "today") return new Date().toISOString().slice(0, 10);
+  return day;
 }
 
 async function ensureDir(p: string) {
@@ -91,6 +119,7 @@ function summarizeFromMeta(sessionId: string, file: string, meta: any): SessionS
     originator: typeof payload?.originator === "string" ? payload.originator : null,
     cliVersion: typeof payload?.cli_version === "string" ? payload.cli_version : null,
     model: null,
+    estimatedCostUsd: null,
     messages: 0,
     toolCalls: 0,
     errors: 0,
@@ -124,6 +153,61 @@ function extractModel(obj: any): string | null {
         ? payload.collaboration_mode.settings.model
         : null;
   return model && model.trim() ? model.trim() : null;
+}
+
+function normalizeModelKey(model: string | null): string | null {
+  if (!model) return null;
+  const trimmed = model.trim().toLowerCase();
+  if (!trimmed) return null;
+  const snapshotMatch = trimmed.match(/^(.*)-\d{4}-\d{2}-\d{2}$/);
+  return snapshotMatch?.[1] ?? trimmed;
+}
+
+function getModelPricing(model: string | null): TokenPricing | null {
+  const key = normalizeModelKey(model);
+  if (!key) return null;
+  return MODEL_PRICING[key] ?? null;
+}
+
+function estimateSessionCostBreakdown(
+  summary: Pick<SessionSummary, "model" | "tokensInput" | "tokensCachedInput" | "tokensOutput">
+): SessionCostBreakdown | null {
+  const pricing = getModelPricing(summary.model);
+  if (!pricing) return null;
+  const inputTokens = Math.max(0, summary.tokensInput);
+  const cachedTokens = Math.min(Math.max(0, summary.tokensCachedInput), inputTokens);
+  const outputTokens = Math.max(0, summary.tokensOutput);
+  if (cachedTokens > 0 && pricing.cachedInput == null) return null;
+
+  const nonCachedInput = Math.max(0, inputTokens - cachedTokens);
+  const cachedInputPrice = pricing.cachedInput ?? 0;
+  const nonCachedInputCostUsd = (nonCachedInput * pricing.input) / 1_000_000;
+  const cachedInputCostUsd = pricing.cachedInput == null ? null : (cachedTokens * cachedInputPrice) / 1_000_000;
+  const outputCostUsd = (outputTokens * pricing.output) / 1_000_000;
+  const totalCostUsd =
+    cachedInputCostUsd == null ? null : nonCachedInputCostUsd + cachedInputCostUsd + outputCostUsd;
+
+  return {
+    cachedInputTokens: cachedTokens,
+    nonCachedInputTokens: nonCachedInput,
+    cachedInputRatio: inputTokens > 0 ? cachedTokens / inputTokens : null,
+    inputPricePer1M: pricing.input,
+    cachedInputPricePer1M: pricing.cachedInput,
+    outputPricePer1M: pricing.output,
+    cachedInputCostUsd,
+    nonCachedInputCostUsd,
+    outputCostUsd,
+    totalCostUsd
+  };
+}
+
+function enrichSummaryCost(summary: SessionSummary): SessionSummary {
+  const costBreakdown = estimateSessionCostBreakdown(summary);
+  return {
+    ...summary,
+    costBreakdown,
+    estimatedCostUsd: costBreakdown?.totalCostUsd ?? null
+  };
 }
 
 function toNum(value: any) {
@@ -180,6 +264,7 @@ async function buildFileIndex(file: string) {
     originator: null,
     cliVersion: null,
     model: null,
+    estimatedCostUsd: null,
     messages: 0,
     toolCalls: 0,
     errors: 0,
@@ -314,7 +399,7 @@ async function buildFileIndex(file: string) {
 
   const dailyKey = dayKeyFromIso(summary.startedAt ?? firstTs);
   const userTokenCounts = tokenizeUserTexts(userTexts);
-  return { sessionId, summary, tools, dailyKey, userTokenCounts, tokenUsage };
+  return { sessionId, summary: enrichSummaryCost(summary), tools, dailyKey, userTokenCounts, tokenUsage };
 }
 
 function stripCodeAndUrls(input: string) {
@@ -581,7 +666,7 @@ async function refreshSqliteIndex(): Promise<void> {
   }
 }
 
-function queryIndexSnapshot(): IndexSnapshot {
+function queryIndexSnapshot(options?: { day?: string | null }): IndexSnapshot {
   migrateDb();
   const d = getDb();
   const cacheDir = getCacheDir();
@@ -589,17 +674,21 @@ function queryIndexSnapshot(): IndexSnapshot {
   const generatedAt =
     (d.prepare("SELECT value FROM meta WHERE key='generatedAt'").get() as any)?.value ?? new Date().toISOString();
 
+  const day = resolveDayParam(options?.day);
+  const where = day ? "WHERE daily_key = ?" : "";
+  const params = day ? [day] : [];
+
   const totalsRow = d
     .prepare(
-      "SELECT COUNT(*) as files, COUNT(*) as sessions, COALESCE(SUM(messages),0) as messages, COALESCE(SUM(tool_calls),0) as toolCalls, COALESCE(SUM(errors),0) as errors, COALESCE(SUM(tokens_total),0) as tokensTotal, COALESCE(SUM(tokens_input),0) as tokensInput, COALESCE(SUM(tokens_output),0) as tokensOutput, COALESCE(SUM(tokens_cached_input),0) as tokensCachedInput, COALESCE(SUM(tokens_reasoning_output),0) as tokensReasoningOutput FROM files"
+      `SELECT COUNT(*) as files, COUNT(*) as sessions, COALESCE(SUM(messages),0) as messages, COALESCE(SUM(tool_calls),0) as toolCalls, COALESCE(SUM(errors),0) as errors, COALESCE(SUM(tokens_total),0) as tokensTotal, COALESCE(SUM(tokens_input),0) as tokensInput, COALESCE(SUM(tokens_output),0) as tokensOutput, COALESCE(SUM(tokens_cached_input),0) as tokensCachedInput, COALESCE(SUM(tokens_reasoning_output),0) as tokensReasoningOutput FROM files ${where}`
     )
-    .get() as any;
+    .get(...params) as any;
 
   const dailyRows = d
     .prepare(
-      "SELECT daily_key as day, COUNT(*) as sessions, COALESCE(SUM(messages),0) as messages, COALESCE(SUM(tool_calls),0) as toolCalls, COALESCE(SUM(errors),0) as errors, COALESCE(SUM(tokens_total),0) as tokensTotal, COALESCE(SUM(tokens_input),0) as tokensInput, COALESCE(SUM(tokens_output),0) as tokensOutput, COALESCE(SUM(tokens_cached_input),0) as tokensCachedInput, COALESCE(SUM(tokens_reasoning_output),0) as tokensReasoningOutput FROM files GROUP BY daily_key"
+      `SELECT daily_key as day, COUNT(*) as sessions, COALESCE(SUM(messages),0) as messages, COALESCE(SUM(tool_calls),0) as toolCalls, COALESCE(SUM(errors),0) as errors, COALESCE(SUM(tokens_total),0) as tokensTotal, COALESCE(SUM(tokens_input),0) as tokensInput, COALESCE(SUM(tokens_output),0) as tokensOutput, COALESCE(SUM(tokens_cached_input),0) as tokensCachedInput, COALESCE(SUM(tokens_reasoning_output),0) as tokensReasoningOutput FROM files ${where} GROUP BY daily_key`
     )
-    .all() as any[];
+    .all(...params) as any[];
 
   const daily: Record<string, DailyAgg> = {};
   for (const r of dailyRows) {
@@ -617,8 +706,14 @@ function queryIndexSnapshot(): IndexSnapshot {
   }
 
   const toolRows = d
-    .prepare("SELECT tool_name as name, COALESCE(SUM(count),0) as c FROM tool_counts GROUP BY tool_name")
-    .all() as any[];
+    .prepare(
+      `SELECT tool_name as name, COALESCE(SUM(count),0) as c
+       FROM tool_counts tc
+       JOIN files f ON f.file = tc.file
+       ${where}
+       GROUP BY tool_name`
+    )
+    .all(...params) as any[];
   const tools: Record<string, number> = {};
   for (const r of toolRows) tools[String(r.name)] = Number(r.c ?? 0);
 
@@ -708,30 +803,34 @@ export async function listSessions(options: {
     )
     .all(...params, limit, offset) as any[];
 
-  const items: SessionSummary[] = rows.map((r) => ({
-    id: String(r.id),
-    file: String(r.file),
-    startedAt: r.startedAt ?? null,
-    endedAt: r.endedAt ?? null,
-    durationSec: r.durationSec ?? null,
-    cwd: r.cwd ?? null,
-    originator: r.originator ?? null,
-    cliVersion: r.cliVersion ?? null,
-    model: r.model ?? null,
-    messages: Number(r.messages ?? 0),
-    toolCalls: Number(r.toolCalls ?? 0),
-    errors: Number(r.errors ?? 0),
-    tokensTotal: Number(r.tokensTotal ?? 0),
-    tokensInput: Number(r.tokensInput ?? 0),
-    tokensOutput: Number(r.tokensOutput ?? 0),
-    tokensCachedInput: Number(r.tokensCachedInput ?? 0),
-    tokensReasoningOutput: Number(r.tokensReasoningOutput ?? 0)
-  }));
+  const items: SessionSummary[] = rows.map((r) =>
+    enrichSummaryCost({
+      id: String(r.id),
+      file: String(r.file),
+      startedAt: r.startedAt ?? null,
+      endedAt: r.endedAt ?? null,
+      durationSec: r.durationSec ?? null,
+      cwd: r.cwd ?? null,
+      originator: r.originator ?? null,
+      cliVersion: r.cliVersion ?? null,
+      model: r.model ?? null,
+      messages: Number(r.messages ?? 0),
+      toolCalls: Number(r.toolCalls ?? 0),
+      errors: Number(r.errors ?? 0),
+      tokensTotal: Number(r.tokensTotal ?? 0),
+      tokensInput: Number(r.tokensInput ?? 0),
+      tokensOutput: Number(r.tokensOutput ?? 0),
+      tokensCachedInput: Number(r.tokensCachedInput ?? 0),
+      tokensReasoningOutput: Number(r.tokensReasoningOutput ?? 0),
+      estimatedCostUsd: null
+    })
+  );
 
   return { generatedAt: new Date().toISOString(), total: Number(totalRow.c ?? 0), items };
 }
 
 export async function getUserWordCloud(options: {
+  day?: string | null;
   days?: number | null;
   limit?: number;
   minCount?: number;
@@ -752,6 +851,12 @@ export async function getUserWordCloud(options: {
   if (options.withTools) where.push("f.tool_calls > 0");
   if (options.withErrors) where.push("f.errors > 0");
 
+  const day = resolveDayParam(options.day);
+  if (day) {
+    where.push("f.daily_key = ?");
+    params.push(day);
+  }
+
   const q = options.q?.trim();
   if (q) {
     where.push("(f.session_id LIKE ? OR IFNULL(f.cwd,'') LIKE ? OR IFNULL(f.originator,'') LIKE ? OR IFNULL(f.model,'') LIKE ?)");
@@ -759,7 +864,7 @@ export async function getUserWordCloud(options: {
     params.push(like, like, like, like);
   }
 
-  if (days != null) {
+  if (days != null && !day) {
     const minIso = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
     where.push("(f.started_at IS NOT NULL AND f.started_at >= ?)");
     params.push(minIso);
@@ -795,6 +900,7 @@ export async function getUserWordCloud(options: {
 
   return {
     generatedAt: new Date().toISOString(),
+    day,
     days,
     limit,
     minCount,
@@ -830,7 +936,7 @@ async function getSessionById(sessionId: string): Promise<SessionSummary | null>
     )
     .get(sessionId) as any;
   if (!row) return null;
-  return {
+  return enrichSummaryCost({
     id: String(row.id),
     file: String(row.file),
     startedAt: row.startedAt ?? null,
@@ -847,8 +953,9 @@ async function getSessionById(sessionId: string): Promise<SessionSummary | null>
     tokensInput: Number(row.tokensInput ?? 0),
     tokensOutput: Number(row.tokensOutput ?? 0),
     tokensCachedInput: Number(row.tokensCachedInput ?? 0),
-    tokensReasoningOutput: Number(row.tokensReasoningOutput ?? 0)
-  };
+    tokensReasoningOutput: Number(row.tokensReasoningOutput ?? 0),
+    estimatedCostUsd: null
+  });
 }
 
 async function buildOrUpdateIndex(): Promise<IndexSnapshot> {
@@ -856,7 +963,11 @@ async function buildOrUpdateIndex(): Promise<IndexSnapshot> {
   return queryIndexSnapshot();
 }
 
-export async function getIndex(): Promise<IndexSnapshot> {
+export async function getIndex(options?: { day?: string | null }): Promise<IndexSnapshot> {
+  if (options?.day) {
+    await ensureFreshIndex();
+    return queryIndexSnapshot({ day: options.day });
+  }
   if (inMemoryIndex && Date.now() - lastRefreshMs < 10_000) return inMemoryIndex;
   if (inFlight) return inFlight;
   inFlight = (async () => {
@@ -1011,6 +1122,7 @@ export async function getSessionTimeline(sessionId: string): Promise<SessionTime
         originator: null,
         cliVersion: null,
         model: null,
+        estimatedCostUsd: null,
         messages: 0,
         toolCalls: 0,
         errors: 1,
@@ -1052,10 +1164,10 @@ export async function getSessionTimeline(sessionId: string): Promise<SessionTime
     cacheHasModel &&
     cacheHasTokenDelta
   ) {
-    return { summary: cached.summary, truncated: cached.truncated, events: cached.events };
+    return { summary: enrichSummaryCost(cached.summary), truncated: cached.truncated, events: cached.events };
   }
 
-  const summary = session ?? (await buildFileIndex(file)).summary;
+  const summary = enrichSummaryCost(session ?? (await buildFileIndex(file)).summary);
   const built = await buildTimeline(file, summary);
 
   await writeJsonFile(cachePath, { ...built, fileMtimeMs: st.mtimeMs, fileSize: st.size });

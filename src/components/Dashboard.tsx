@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
 import dynamic from "next/dynamic";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { IndexSnapshot } from "@/lib/types";
 import UserWordCloud from "@/components/UserWordCloud";
 
@@ -26,12 +27,22 @@ function sumSlice(values: number[], start: number, end: number) {
 }
 
 export default function Dashboard() {
-  const { data, error, isLoading } = useSWR<IndexSnapshot>("/api/index", fetcher, {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const todayOnly = searchParams.get("day") === "today";
+
+  const indexKey = todayOnly ? "/api/index?day=today" : "/api/index";
+  const { data, error, isLoading } = useSWR<IndexSnapshot>(indexKey, fetcher, {
     refreshInterval: 15_000
   });
   const [zoom, setZoom] = useState<{ start: number; end: number } | null>(null);
   const safeDaily = data?.daily ?? {};
   const safeTools = data?.tools ?? {};
+
+  useEffect(() => {
+    setZoom(null);
+  }, [todayOnly]);
 
   const dailyKeys = useMemo(() => Object.keys(safeDaily).sort(), [safeDaily]);
   const dailySessions = useMemo(() => dailyKeys.map((k) => safeDaily[k]?.sessions ?? 0), [dailyKeys, safeDaily]);
@@ -94,6 +105,14 @@ export default function Dashboard() {
     .sort((a, b) => b[1] - a[1])
     .slice(0, 10);
 
+  const toggleToday = () => {
+    const next = new URLSearchParams(searchParams.toString());
+    if (todayOnly) next.delete("day");
+    else next.set("day", "today");
+    const query = next.toString();
+    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+  };
+
   if (error) {
     return (
       <section className="panel rounded-2xl p-4 text-sm text-rose-600">
@@ -112,6 +131,7 @@ export default function Dashboard() {
 
   const rangeLabel = `${dailyKeys[rangeStart] ?? "-"} ~ ${dailyKeys[rangeEnd] ?? "-"}`;
   const generatedAt = new Date(data.generatedAt).toLocaleString();
+  const scopeLabel = todayOnly ? "今天" : rangeLabel;
 
   return (
     <section className="space-y-6">
@@ -128,10 +148,21 @@ export default function Dashboard() {
             </div>
           </div>
           <p className="mt-1.5 text-sm text-slate-500">
-            当前显示 {rangeLabel} 的会话数据，支持拖动时间轴进行多维分析。
+            当前显示 {scopeLabel} 的会话数据，支持拖动时间轴进行多维分析。
           </p>
         </div>
         <div className="flex items-center gap-3 text-xs">
+          <button
+            type="button"
+            onClick={toggleToday}
+            className={`rounded-full border px-3 py-1.5 font-medium transition-colors ${
+              todayOnly
+                ? "border-blue-200 bg-blue-50 text-blue-700"
+                : "border-slate-200 bg-white/80 text-slate-600 hover:bg-white"
+            }`}
+          >
+            {todayOnly ? "看全部" : "看今天"}
+          </button>
           <div className="flex flex-col items-end gap-1">
             <span className="text-slate-400">更新于 {generatedAt}</span>
             <span className="flex items-center gap-1 font-medium text-emerald-600">
@@ -152,7 +183,7 @@ export default function Dashboard() {
               区间
             </span>
           </div>
-          <div className="mt-3 text-xs text-slate-500">{rangeLabel}</div>
+          <div className="mt-3 text-xs text-slate-500">{scopeLabel}</div>
         </div>
 
         <div className="panel relative overflow-hidden rounded-2xl p-5">
@@ -198,10 +229,12 @@ export default function Dashboard() {
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div>
             <div className="text-sm font-semibold text-slate-900">趋势雷达</div>
-            <div className="mt-1 text-xs text-slate-500">多维度趋势，可缩放区间自动刷新指标</div>
+            <div className="mt-1 text-xs text-slate-500">
+              {todayOnly ? "今天的数据" : "多维度趋势，可缩放区间自动刷新指标"}
+            </div>
           </div>
           <div className="rounded-full border border-slate-200 bg-white/80 px-3 py-1 text-xs text-slate-600">
-            Zoom: {rangeLabel}
+            Zoom: {scopeLabel}
           </div>
         </div>
         <ReactECharts
@@ -282,7 +315,7 @@ export default function Dashboard() {
 
       <div className="grid gap-4 md:grid-cols-3">
         <div className="md:col-span-2">
-          <UserWordCloud />
+          <UserWordCloud day={todayOnly ? "today" : null} />
         </div>
         <div className="panel rounded-2xl p-5">
           <div className="mb-4 flex items-center justify-between">

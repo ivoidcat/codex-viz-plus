@@ -1,30 +1,35 @@
-# Codex Viz
+# Codex Viz Plus
 
-<img width="2940" height="2689" alt="image" src="https://github.com/user-attachments/assets/b75a3ca9-73b5-41b1-8010-8279afe25fad" />
+<p align="center">
+  <img src="./docs/preview/home.png" alt="首页预览" width="49%" />
+  <img src="./docs/preview/sessions.png" alt="会话列表预览" width="49%" />
+</p>
 
-[English](#codex-viz-local) | [中文](#codex-viz本地)
+Codex Viz Plus 是基于 [onewesong/codex-viz](https://github.com/onewesong/codex-viz) 改造的本地会话分析面板。
+它继续读取本机 Codex CLI 的 JSONL 历史，同时补上了模型识别、费用估算、今天筛选和更完整的列表信息展示。
 
+如果你想快速看清“今天跑了多少会话”“花了多少 Token”“大概花了多少钱”，这里会比原版更直接。
 
-Codex Viz is a local-first dashboard for exploring your Codex CLI sessions. It indexes your local JSONL history and turns it into clear trends, token usage, tool insights, and a focused word cloud.
+## 新增功能
 
-If you want fast answers to “what did I do”, “how much did it cost”, and “where did my time go”, this is the smallest tool that feels big.
+- 会话模型识别：从原始 `turn_context.payload.model` 读取模型
+- 会话列表增强：新增模型、Token 总量、费用、费用明细列
+- 费用估算：按输入、缓存输入、输出三段单价拆分计算
+- 今天筛选：首页支持一键切换“看今天 / 看全部”
+- 今天全局联动：首页总览、趋势图、工具榜、词云都能按当天过滤
+- 模型搜索：会话列表搜索支持按模型名匹配
+- 详情增强：会话详情页展示模型和 Token 统计
 
----
+## 费用怎么算
 
-# Codex Viz（本地）
-
-Codex Viz 是一个**本地优先**的 Codex CLI 会话可视化面板。它只读取你本机的 JSONL 历史，快速生成趋势、Token 使用、工具洞察与输入词云。
-
-你想知道“我最近都在做什么”“消耗了多少 Token”“哪些工具最常用”，这里一眼就能看到。
-
-## 功能亮点
-
-- 本地索引：SQLite 缓存，快速查询
-- 趋势看板：会话、消息、工具、Token 趋势
-- Token 统计：基于 `event_msg.token_count` 的 `total_token_usage` 增量累计，首条/重置时用 `last_token_usage` 兜底
-  - Prompt(含缓存) = `input_tokens`；`cached_input_tokens` 为其中命中缓存的子集
-- 词云：对 user 输入做轻量分词（英文词 + 中文 2/3-gram）
-- 工具排行：Top 工具一眼可见
+- `缓存了多少` = `tokensCachedInput`
+- `未缓存输入` = `max(tokensInput - tokensCachedInput, 0)`
+- `缓存比例` = `tokensCachedInput / tokensInput`，如果 `tokensInput = 0`，则显示 `—`
+- `缓存价格` = `cached input price / 1M tokens`
+- `没缓存价格` = `input price / 1M tokens`
+- `输出价格` = `output price / 1M tokens`
+- `总费用` = `未缓存输入费用 + 缓存输入费用 + 输出费用`
+- 如果模型没有对应公开价格，则费用显示 `无公开价格，未统计`
 
 ## 快速开始
 
@@ -35,62 +40,21 @@ pnpm dev
 
 打开 `http://localhost:3000`
 
-## 可选环境变量
+## 配置
 
 - `CODEX_SESSIONS_DIR`：默认 `~/.codex/sessions`
 - `CODEX_VIZ_CACHE_DIR`：默认 `~/.codex-viz/cache`
 
-## 适用场景
+## 仓库命名建议
 
-- 想追踪个人/团队在 Codex 上的投入与产出
-- 需要快速复盘近期任务与工具使用偏好
-- 希望用更直观的方式理解 Token 消耗
+如果你打算保留这是“上游增强版”的定位，我建议仓库名和包名统一用：
 
-## 许可
+- 仓库名：`codex-viz-plus`
+- 项目名：`Codex Viz Plus`
 
-MIT License，详见 `LICENSE`。
+这个命名比 `Pro` 更自然，也不容易让人误会成商业版本。
 
----
+## 说明
 
-# Codex Viz (Local)
+本项目保留原始 MIT License 约束，详见 `LICENSE`。
 
-Codex Viz is a **local-first** dashboard for Codex CLI sessions. It reads your JSONL history on your machine and turns it into trends, token usage, tool insights, and a focused user-input word cloud.
-
-If you want to quickly answer “what I worked on”, “how many tokens I used”, and “which tools I rely on”, this gives you that at a glance.
-
-## Highlights
-
-- Local indexing with SQLite for fast queries
-- Trend chart for sessions, messages, tools, and tokens
-- Token accounting from `event_msg.token_count` using incremental `total_token_usage`
-  - Prompt (incl. cache) = `input_tokens`; `cached_input_tokens` is a subset of it
-- Lightweight word cloud from user input (EN tokens + ZH 2/3-gram)
-- Top tools leaderboard
-
-## Quick Start
-
-```bash
-pnpm i
-pnpm dev
-```
-
-Open `http://localhost:3000`
-
-## Optional Env Vars
-
-- `CODEX_SESSIONS_DIR` (default `~/.codex/sessions`)
-- `CODEX_VIZ_CACHE_DIR` (default `~/.codex-viz/cache`)
-
-## Use Cases
-
-- Track personal/team Codex usage and trends
-- Review recent work and tool preferences
-- Make token usage more tangible
-
-## License
-
-MIT License. See `LICENSE`.
-
-<a href="https://llmapis.com?source=https%3A%2F%2Fgithub.com%2Fonewesong%2Fcodex-viz" target="_blank"><img src="https://llmapis.com/api/badge/onewesong/codex-viz" alt="LLMAPIS" width="60" /></a>
-
-*Partnership with [https://llmapis.com](https://llmapis.com) - Discover more AI tools and resources*

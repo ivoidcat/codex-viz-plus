@@ -23,6 +23,7 @@ function toNullableInt(v: string | null) {
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
+  const day = searchParams.get("day");
   const days = toNullableInt(searchParams.get("days"));
   const limit = toInt(searchParams.get("limit"), 200);
   const minCount = toInt(searchParams.get("min"), 2);
@@ -30,7 +31,6 @@ export async function GET(req: Request) {
   const withTools = toBool(searchParams.get("withTools"));
   const withErrors = toBool(searchParams.get("withErrors"));
 
-  const res = await getUserWordCloud({ days, limit, minCount, q, withTools, withErrors });
+  const res = await getUserWordCloud({ day, days, limit, minCount, q, withTools, withErrors });
   return NextResponse.json(res);
 }
-

@@ -11,6 +11,19 @@ export type TokenUsageInfo = {
   delta: TokenUsage | null;
 };
 
+export type SessionCostBreakdown = {
+  cachedInputTokens: number;
+  nonCachedInputTokens: number;
+  cachedInputRatio: number | null;
+  inputPricePer1M: number;
+  cachedInputPricePer1M: number | null;
+  outputPricePer1M: number;
+  cachedInputCostUsd: number | null;
+  nonCachedInputCostUsd: number | null;
+  outputCostUsd: number | null;
+  totalCostUsd: number | null;
+};
+
 export type DailyAgg = {
   sessions: number;
   messages: number;
@@ -33,6 +46,8 @@ export type SessionSummary = {
   originator: string | null;
   cliVersion: string | null;
   model: string | null;
+  estimatedCostUsd: number | null;
+  costBreakdown?: SessionCostBreakdown | null;
   messages: number;
   toolCalls: number;
   errors: number;
@@ -91,6 +106,7 @@ export type WordCloudItem = {
 
 export type WordCloudResponse = {
   generatedAt: string;
+  day: string | null;
   days: number | null;
   limit: number;
   minCount: number;

@@ -8,7 +8,7 @@ import type { WordCloudResponse } from "@/lib/types";
 const ReactECharts = dynamic(() => import("echarts-for-react"), { ssr: false });
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
-export default function UserWordCloud() {
+export default function UserWordCloud({ day }: { day?: string | null }) {
   const [pluginReady, setPluginReady] = useState(false);
   useEffect(() => {
     let cancelled = false;
@@ -24,7 +24,11 @@ export default function UserWordCloud() {
     };
   }, []);
 
-  const { data, error, isLoading } = useSWR<WordCloudResponse>("/api/wordcloud?days=30&limit=200&min=2", fetcher, {
+  const key = day
+    ? `/api/wordcloud?day=${encodeURIComponent(day)}&limit=200&min=2`
+    : "/api/wordcloud?days=30&limit=200&min=2";
+
+  const { data, error, isLoading } = useSWR<WordCloudResponse>(key, fetcher, {
     refreshInterval: 30_000
   });
 
@@ -47,7 +51,7 @@ export default function UserWordCloud() {
   if (!data.items.length) {
     return (
       <section className="panel rounded-2xl p-4 text-sm text-slate-500">
-        最近 {data.days ?? "全部"} 天暂无可展示的词（min={data.minCount}）。
+        {data.day ? "今天" : `最近 ${data.days ?? "全部"} 天`} 暂无可展示的词（min={data.minCount}）。
       </section>
     );
   }
@@ -60,7 +64,8 @@ export default function UserWordCloud() {
         <div>
           <div className="text-sm font-semibold text-slate-900">User 输入词云</div>
           <div className="mt-1 text-xs text-slate-500">
-            最近 {data.days ?? "全部"} 天 · min={data.minCount} · top={data.limit} · unique≈{data.totalUnique}
+            {data.day ? "今天" : `最近 ${data.days ?? "全部"} 天`} · min={data.minCount} · top={data.limit} · unique≈
+            {data.totalUnique}
           </div>
         </div>
       </div>

@@ -90,6 +90,11 @@ function formatCount(value: number | null | undefined) {
   return value.toLocaleString();
 }
 
+function formatUsd(value: number | null | undefined) {
+  if (value == null) return "—";
+  return `$${value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`;
+}
+
 function renderTokenUsageLine(prefix: string, usage?: TokenUsage | null) {
   if (!usage) return null;
   return (
@@ -164,10 +169,15 @@ export default function SessionTimeline({ sessionId }: { sessionId: string }) {
   }
 
   const summary = data.summary;
-  const tokenMetrics = [
+  const tokenMetrics: Array<{
+    label: string;
+    value: number | null | undefined;
+    format?: (value: number | null | undefined) => string;
+  }> = [
     { label: "Token 总量", value: summary.tokensTotal },
     { label: "输入 Token", value: summary.tokensInput },
-    { label: "输出 Token", value: summary.tokensOutput }
+    { label: "输出 Token", value: summary.tokensOutput },
+    { label: "预估费用", value: summary.estimatedCostUsd, format: formatUsd }
   ];
 
   return (
@@ -187,11 +197,13 @@ export default function SessionTimeline({ sessionId }: { sessionId: string }) {
         </div>
         <div className="mt-2 text-xs text-slate-500">cwd：{summary.cwd ?? "—"}</div>
         <div className="mt-1 text-xs text-slate-500">模型：{summary.model ?? "—"}</div>
-        <div className="mt-3 grid gap-2 text-slate-600 sm:grid-cols-3">
+        <div className="mt-3 grid gap-2 text-slate-600 sm:grid-cols-4">
           {tokenMetrics.map((metric) => (
             <div key={metric.label} className="rounded-2xl border border-slate-100 bg-white/50 p-2 text-xs">
               <div className="text-[11px] text-slate-500">{metric.label}</div>
-              <div className="tabular-nums text-sm font-semibold text-slate-800">{formatCount(metric.value)}</div>
+              <div className="tabular-nums text-sm font-semibold text-slate-800">
+                {metric.format ? metric.format(metric.value) : formatCount(metric.value)}
+              </div>
             </div>
           ))}
         </div>
