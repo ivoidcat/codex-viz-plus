@@ -12,7 +12,7 @@ export default async function Page() {
         </div>
         <div className="flex items-center gap-2">
           <Link
-            href="https://github.com/onewesong/codex-viz.git"
+            href="https://github.com/ivoidcat/codex-viz-plus"
             aria-label="GitHub"
             className="inline-flex items-center rounded-lg border border-slate-200 bg-white/50 p-2 text-slate-600 hover:bg-white hover:text-slate-900 transition-colors"
           >

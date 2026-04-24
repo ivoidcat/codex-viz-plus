@@ -152,17 +152,27 @@ export default function Dashboard() {
           </p>
         </div>
         <div className="flex items-center gap-3 text-xs">
-          <button
-            type="button"
-            onClick={toggleToday}
-            className={`rounded-full border px-3 py-1.5 font-medium transition-colors ${
-              todayOnly
-                ? "border-blue-200 bg-blue-50 text-blue-700"
-                : "border-slate-200 bg-white/80 text-slate-600 hover:bg-white"
-            }`}
-          >
-            {todayOnly ? "看全部" : "看今天"}
-          </button>
+          <div className="flex items-center rounded-full border border-slate-200 bg-white/80 p-1 shadow-sm">
+            <span className="px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.16em] text-slate-400">
+              范围
+            </span>
+            <button
+              type="button"
+              onClick={toggleToday}
+              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 font-semibold transition-all ${
+                todayOnly
+                  ? "bg-blue-600 text-white shadow-sm"
+                  : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+              }`}
+            >
+              <span
+                className={`h-1.5 w-1.5 rounded-full ${
+                  todayOnly ? "bg-white" : "bg-slate-300"
+                }`}
+              />
+              {todayOnly ? "看今天" : "看全部"}
+            </button>
+          </div>
           <div className="flex flex-col items-end gap-1">
             <span className="text-slate-400">更新于 {generatedAt}</span>
             <span className="flex items-center gap-1 font-medium text-emerald-600">
