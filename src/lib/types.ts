@@ -99,6 +99,16 @@ export type SessionTimelineResponse = {
   events: TimelineEvent[];
 };
 
+export type SessionBackupResponse = {
+  generatedAt: string;
+  sourceDir: string;
+  targetDir: string;
+  totalFiles: number;
+  copiedFiles: number;
+  bytesCopied: number;
+  note?: string;
+};
+
 export type WordCloudItem = {
   name: string;
   value: number;

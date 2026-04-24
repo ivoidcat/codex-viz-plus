@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
-import type { SessionSummary, SessionsListResponse } from "@/lib/types";
+import type { SessionBackupResponse, SessionSummary, SessionsListResponse } from "@/lib/types";
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
@@ -41,12 +41,39 @@ function formatPercent(value: number | null | undefined) {
   return `${(value * 100).toLocaleString("en-US", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`;
 }
 
+function formatBytes(value: number | null | undefined) {
+  if (value == null) return "—";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let size = value;
+  let unit = 0;
+  while (size >= 1024 && unit < units.length - 1) {
+    size /= 1024;
+    unit += 1;
+  }
+  return `${size.toLocaleString("en-US", { minimumFractionDigits: size >= 10 || unit === 0 ? 0 : 1, maximumFractionDigits: 1 })} ${units[unit]}`;
+}
+
 export default function SessionsTable() {
   const [onlyWithTools, setOnlyWithTools] = useState(false);
   const [onlyWithErrors, setOnlyWithErrors] = useState(false);
   const [q, setQ] = useState("");
   const [limit] = useState(100);
   const [offset, setOffset] = useState(0);
+  const [backupPath, setBackupPath] = useState("");
+  const [backupState, setBackupState] = useState<{
+    status: "idle" | "running" | "success" | "error";
+    message: string;
+    result?: SessionBackupResponse | null;
+  }>({ status: "idle", message: "" });
+
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem("codex-viz-backup-path");
+      if (saved) setBackupPath(saved);
+    } catch {
+      // ignore localStorage errors
+    }
+  }, []);
 
   useEffect(() => {
     setOffset(0);
@@ -70,6 +97,37 @@ export default function SessionsTable() {
     return data?.items ?? [];
   }, [data?.items]);
 
+  const runBackup = async () => {
+    const targetDir = backupPath.trim();
+    if (!targetDir) {
+      setBackupState({ status: "error", message: "请输入备份路径" });
+      return;
+    }
+    setBackupState({ status: "running", message: "正在备份…" });
+    try {
+      const res = await fetch("/api/backup/sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targetDir })
+      });
+      const payload = (await res.json()) as SessionBackupResponse & { error?: string };
+      if (!res.ok) {
+        throw new Error(payload.error ?? "备份失败");
+      }
+      try {
+        window.localStorage.setItem("codex-viz-backup-path", targetDir);
+      } catch {
+        // ignore
+      }
+      setBackupState({ status: "success", message: "备份完成", result: payload });
+    } catch (error) {
+      setBackupState({
+        status: "error",
+        message: error instanceof Error ? error.message : String(error)
+      });
+    }
+  };
+
   if (error) {
     return (
       <section className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
@@ -88,6 +146,50 @@ export default function SessionsTable() {
 
   return (
     <section className="rounded-xl border border-zinc-200 bg-white p-4">
+      <div className="mb-4 rounded-2xl border border-cyan-100 bg-cyan-50/60 p-4">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <div className="text-sm font-semibold text-cyan-950">全量备份</div>
+            <div className="mt-1 text-xs text-cyan-800/80">
+              把当前所有原始 jsonl 按目录结构复制到指定路径，适合迁移或重装前备份。
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              value={backupPath}
+              onChange={(e) => setBackupPath(e.target.value)}
+              placeholder="例如：~/Backups/codex-viz"
+              className="w-[320px] max-w-[75vw] rounded-lg border border-cyan-200 bg-white px-3 py-2 text-sm outline-none focus:border-cyan-400"
+            />
+            <button
+              type="button"
+              onClick={runBackup}
+              disabled={backupState.status === "running"}
+              className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-700 disabled:opacity-60"
+            >
+              {backupState.status === "running" ? "备份中…" : "开始备份"}
+            </button>
+          </div>
+        </div>
+        <div className="mt-3 text-xs">
+          {backupState.status === "success" && backupState.result ? (
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-emerald-800">
+              {backupState.message}：{backupState.result.copiedFiles}/{backupState.result.totalFiles} 个文件，{formatBytes(
+                backupState.result.bytesCopied
+              )}，目标：{backupState.result.targetDir}
+            </div>
+          ) : null}
+          {backupState.status === "error" ? (
+            <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-rose-700">
+              {backupState.message}
+            </div>
+          ) : null}
+          {backupState.status === "idle" ? (
+            <div className="text-cyan-800/70">支持输入绝对路径或 `~/` 开头路径。</div>
+          ) : null}
+        </div>
+      </div>
+
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap gap-2">
           <label className="flex items-center gap-2 text-sm text-zinc-700">

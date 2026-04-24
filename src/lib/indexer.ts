@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import fsp from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import readline from "node:readline";
 import { getCacheDir, getSessionsDir } from "@/lib/paths";
@@ -10,6 +11,7 @@ import type {
   SessionSummary,
   SessionTimelineResponse,
   SessionsListResponse,
+  SessionBackupResponse,
   TimelineEvent,
   TokenUsage
 } from "@/lib/types";
@@ -67,6 +69,14 @@ function resolveDayParam(day: string | null | undefined) {
   if (!day) return null;
   if (day === "today") return new Date().toISOString().slice(0, 10);
   return day;
+}
+
+function expandUserPath(input: string) {
+  const trimmed = input.trim();
+  if (!trimmed) return "";
+  if (trimmed === "~") return os.homedir();
+  if (trimmed.startsWith("~/")) return path.join(os.homedir(), trimmed.slice(2));
+  return path.resolve(trimmed);
 }
 
 async function ensureDir(p: string) {
@@ -1010,6 +1020,59 @@ export async function resolveSessionFile(sessionId: string) {
     | undefined;
   if (row?.file) return String(row.file);
   return findFileForSession(sessionId);
+}
+
+export async function backupAllSessions(targetDir: string): Promise<SessionBackupResponse> {
+  await ensureFreshIndex();
+  const sourceDir = path.resolve(getSessionsDir());
+  const targetRoot = expandUserPath(targetDir);
+  if (!targetRoot) {
+    throw new Error("请提供备份路径");
+  }
+
+  const resolvedTarget = path.resolve(targetRoot);
+  if (resolvedTarget === sourceDir || resolvedTarget.startsWith(`${sourceDir}${path.sep}`)) {
+    throw new Error("备份路径不能位于 sessions 目录内部");
+  }
+
+  const files = await listJsonlFiles(sourceDir);
+  await ensureDir(resolvedTarget);
+
+  let copiedFiles = 0;
+  let bytesCopied = 0;
+  for (const file of files) {
+    const rel = path.relative(sourceDir, file);
+    if (!rel || rel.startsWith("..") || path.isAbsolute(rel)) continue;
+    const dest = path.join(resolvedTarget, rel);
+    await ensureDir(path.dirname(dest));
+    await fsp.copyFile(file, dest);
+    copiedFiles += 1;
+    try {
+      const st = await fsp.stat(file);
+      bytesCopied += st.size;
+    } catch {
+      // ignore size errors, copy already succeeded
+    }
+  }
+
+  await writeJsonFile(path.join(resolvedTarget, "codex-viz-backup.manifest.json"), {
+    generatedAt: new Date().toISOString(),
+    sourceDir,
+    totalFiles: files.length,
+    copiedFiles,
+    bytesCopied,
+    note: "原始 jsonl 备份"
+  });
+
+  return {
+    generatedAt: new Date().toISOString(),
+    sourceDir,
+    targetDir: resolvedTarget,
+    totalFiles: files.length,
+    copiedFiles,
+    bytesCopied,
+    note: "已按原目录结构备份原始 jsonl 文件"
+  };
 }
 
 async function buildTimeline(file: string, summary: SessionSummary): Promise<SessionTimelineResponse> {
