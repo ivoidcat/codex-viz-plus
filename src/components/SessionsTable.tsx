@@ -91,7 +91,7 @@ export default function SessionsTable() {
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="搜索 id/cwd/originator…"
+            placeholder="搜索 id/cwd/originator/model…"
             className="w-64 max-w-[70vw] rounded-lg border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-zinc-400"
           />
         </div>
@@ -137,6 +137,7 @@ export default function SessionsTable() {
               <th className="px-2">消息</th>
               <th className="px-2">工具</th>
               <th className="px-2">错误</th>
+              <th className="px-2">模型</th>
               <th className="px-2">cwd</th>
               <th className="px-2">操作</th>
             </tr>
@@ -144,7 +145,7 @@ export default function SessionsTable() {
           <tbody>
             {sessions.length === 0 ? (
               <tr>
-                <td className="px-2 py-6 text-zinc-500" colSpan={7}>
+                <td className="px-2 py-6 text-zinc-500" colSpan={8}>
                   没有匹配的会话。
                 </td>
               </tr>
@@ -156,6 +157,7 @@ export default function SessionsTable() {
                   <td className="px-2 py-2 tabular-nums">{s.messages ?? 0}</td>
                   <td className="px-2 py-2 tabular-nums">{s.toolCalls ?? 0}</td>
                   <td className="px-2 py-2 tabular-nums">{s.errors ?? 0}</td>
+                  <td className="px-2 py-2 max-w-[180px] truncate text-zinc-600">{s.model ?? "—"}</td>
                   <td className="px-2 py-2 max-w-[320px] truncate text-zinc-600">{s.cwd ?? "—"}</td>
                   <td className="px-2 py-2">
                     <Link

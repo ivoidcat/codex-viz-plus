@@ -14,7 +14,7 @@ import type {
 } from "@/lib/types";
 import { getDb, migrateDb } from "@/lib/sqlite";
 
-const INDEX_VERSION = 3;
+const INDEX_VERSION = 4;
 const SESSION_DIR = "session";
 
 let inMemoryIndex: IndexSnapshot | null = null;
@@ -90,6 +90,7 @@ function summarizeFromMeta(sessionId: string, file: string, meta: any): SessionS
     cwd: typeof payload?.cwd === "string" ? payload.cwd : null,
     originator: typeof payload?.originator === "string" ? payload.originator : null,
     cliVersion: typeof payload?.cli_version === "string" ? payload.cli_version : null,
+    model: null,
     messages: 0,
     toolCalls: 0,
     errors: 0,
@@ -112,6 +113,17 @@ function extractMessageText(payload: any): string | null {
   }
   const txt = parts.join("\n").trim();
   return txt ? txt : null;
+}
+
+function extractModel(obj: any): string | null {
+  const payload = obj?.payload ?? obj ?? {};
+  const model =
+    typeof payload?.model === "string"
+      ? payload.model
+      : typeof payload?.collaboration_mode?.settings?.model === "string"
+        ? payload.collaboration_mode.settings.model
+        : null;
+  return model && model.trim() ? model.trim() : null;
 }
 
 function toNum(value: any) {
@@ -167,6 +179,7 @@ async function buildFileIndex(file: string) {
     cwd: null,
     originator: null,
     cliVersion: null,
+    model: null,
     messages: 0,
     toolCalls: 0,
     errors: 0,
@@ -195,6 +208,11 @@ async function buildFileIndex(file: string) {
     if (obj.type === "session_meta") {
       summary = summarizeFromMeta(sessionId, file, obj);
       if (!firstTs && summary.startedAt) firstTs = summary.startedAt;
+    }
+
+    if (summary.model == null && (obj.type === "session_meta" || obj.type === "turn_context")) {
+      const model = extractModel(obj);
+      if (model) summary.model = model;
     }
 
     if (obj.type === "event_msg") {
@@ -447,12 +465,12 @@ async function refreshSqliteIndex(): Promise<void> {
   const upsertFile = d.prepare(`
     INSERT INTO files (
       file, mtime_ms, size, session_id, daily_key,
-      started_at, ended_at, duration_sec, cwd, originator, cli_version,
+      started_at, ended_at, duration_sec, cwd, originator, cli_version, model,
       messages, tool_calls, errors,
       tokens_total, tokens_input, tokens_output, tokens_cached_input, tokens_reasoning_output
     ) VALUES (
       @file, @mtimeMs, @size, @sessionId, @dailyKey,
-      @startedAt, @endedAt, @durationSec, @cwd, @originator, @cliVersion,
+      @startedAt, @endedAt, @durationSec, @cwd, @originator, @cliVersion, @model,
       @messages, @toolCalls, @errors,
       @tokensTotal, @tokensInput, @tokensOutput, @tokensCachedInput, @tokensReasoningOutput
     )
@@ -467,6 +485,7 @@ async function refreshSqliteIndex(): Promise<void> {
       cwd=excluded.cwd,
       originator=excluded.originator,
       cli_version=excluded.cli_version,
+      model=excluded.model,
       messages=excluded.messages,
       tool_calls=excluded.tool_calls,
       errors=excluded.errors,
@@ -528,6 +547,7 @@ async function refreshSqliteIndex(): Promise<void> {
         cwd: built.summary.cwd,
         originator: built.summary.originator,
         cliVersion: built.summary.cliVersion,
+        model: built.summary.model,
         messages: built.summary.messages,
         toolCalls: built.summary.toolCalls,
         errors: built.summary.errors,
@@ -653,9 +673,9 @@ export async function listSessions(options: {
 
   const q = options.q?.trim();
   if (q) {
-    where.push("(session_id LIKE ? OR IFNULL(cwd,'') LIKE ? OR IFNULL(originator,'') LIKE ?)");
+    where.push("(session_id LIKE ? OR IFNULL(cwd,'') LIKE ? OR IFNULL(originator,'') LIKE ? OR IFNULL(model,'') LIKE ?)");
     const like = `%${q}%`;
-    params.push(like, like, like);
+    params.push(like, like, like, like);
   }
 
   const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
@@ -672,6 +692,7 @@ export async function listSessions(options: {
       cwd,
       originator,
       cli_version as cliVersion,
+      model,
       messages,
       tool_calls as toolCalls,
       errors,
@@ -696,6 +717,7 @@ export async function listSessions(options: {
     cwd: r.cwd ?? null,
     originator: r.originator ?? null,
     cliVersion: r.cliVersion ?? null,
+    model: r.model ?? null,
     messages: Number(r.messages ?? 0),
     toolCalls: Number(r.toolCalls ?? 0),
     errors: Number(r.errors ?? 0),
@@ -732,9 +754,9 @@ export async function getUserWordCloud(options: {
 
   const q = options.q?.trim();
   if (q) {
-    where.push("(f.session_id LIKE ? OR IFNULL(f.cwd,'') LIKE ? OR IFNULL(f.originator,'') LIKE ?)");
+    where.push("(f.session_id LIKE ? OR IFNULL(f.cwd,'') LIKE ? OR IFNULL(f.originator,'') LIKE ? OR IFNULL(f.model,'') LIKE ?)");
     const like = `%${q}%`;
-    params.push(like, like, like);
+    params.push(like, like, like, like);
   }
 
   if (days != null) {
@@ -795,6 +817,7 @@ async function getSessionById(sessionId: string): Promise<SessionSummary | null>
         cwd,
         originator,
         cli_version as cliVersion,
+        model,
         messages,
         tool_calls as toolCalls,
         errors,
@@ -816,6 +839,7 @@ async function getSessionById(sessionId: string): Promise<SessionSummary | null>
     cwd: row.cwd ?? null,
     originator: row.originator ?? null,
     cliVersion: row.cliVersion ?? null,
+    model: row.model ?? null,
     messages: Number(row.messages ?? 0),
     toolCalls: Number(row.toolCalls ?? 0),
     errors: Number(row.errors ?? 0),
@@ -986,6 +1010,7 @@ export async function getSessionTimeline(sessionId: string): Promise<SessionTime
         cwd: null,
         originator: null,
         cliVersion: null,
+        model: null,
         messages: 0,
         toolCalls: 0,
         errors: 1,
@@ -1012,6 +1037,7 @@ export async function getSessionTimeline(sessionId: string): Promise<SessionTime
     typeof cached.summary.tokensOutput === "number" &&
     typeof cached.summary.tokensCachedInput === "number" &&
     typeof cached.summary.tokensReasoningOutput === "number";
+  const cacheHasModel = !!cached?.summary && "model" in cached.summary;
   const cacheHasTokenDelta =
     !cached?.events ||
     !cached.events.some(
@@ -1023,6 +1049,7 @@ export async function getSessionTimeline(sessionId: string): Promise<SessionTime
     cached.fileMtimeMs === st.mtimeMs &&
     cached.fileSize === st.size &&
     cacheHasTokenSummary &&
+    cacheHasModel &&
     cacheHasTokenDelta
   ) {
     return { summary: cached.summary, truncated: cached.truncated, events: cached.events };

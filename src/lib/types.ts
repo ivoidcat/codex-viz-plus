@@ -32,6 +32,7 @@ export type SessionSummary = {
   cwd: string | null;
   originator: string | null;
   cliVersion: string | null;
+  model: string | null;
   messages: number;
   toolCalls: number;
   errors: number;

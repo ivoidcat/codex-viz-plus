@@ -43,6 +43,7 @@ export function migrateDb() {
       cwd TEXT,
       originator TEXT,
       cli_version TEXT,
+      model TEXT,
       messages INTEGER NOT NULL,
       tool_calls INTEGER NOT NULL,
       errors INTEGER NOT NULL
@@ -86,4 +87,6 @@ export function migrateDb() {
   ensureColumn("tokens_output", "tokens_output INTEGER NOT NULL DEFAULT 0");
   ensureColumn("tokens_cached_input", "tokens_cached_input INTEGER NOT NULL DEFAULT 0");
   ensureColumn("tokens_reasoning_output", "tokens_reasoning_output INTEGER NOT NULL DEFAULT 0");
+  ensureColumn("model", "model TEXT");
+  d.exec("CREATE INDEX IF NOT EXISTS idx_files_model ON files(model);");
 }

@@ -186,6 +186,7 @@ export default function SessionTimeline({ sessionId }: { sessionId: string }) {
           </Link>
         </div>
         <div className="mt-2 text-xs text-slate-500">cwd：{summary.cwd ?? "—"}</div>
+        <div className="mt-1 text-xs text-slate-500">模型：{summary.model ?? "—"}</div>
         <div className="mt-3 grid gap-2 text-slate-600 sm:grid-cols-3">
           {tokenMetrics.map((metric) => (
             <div key={metric.label} className="rounded-2xl border border-slate-100 bg-white/50 p-2 text-xs">
