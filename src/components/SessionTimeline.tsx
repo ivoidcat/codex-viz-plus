@@ -120,6 +120,7 @@ export default function SessionTimeline({ sessionId }: { sessionId: string }) {
     `/api/session/${encodeURIComponent(sessionId)}`,
     fetcher
   );
+  const exportHref = `/api/session/${encodeURIComponent(sessionId)}/export`;
 
   const parentRef = useRef<HTMLDivElement | null>(null);
   const [filters, setFilters] = useState({
@@ -220,6 +221,15 @@ export default function SessionTimeline({ sessionId }: { sessionId: string }) {
         </div>
         <div className="mt-2 text-xs text-slate-500">cwd：{summary.cwd ?? "—"}</div>
         <div className="mt-1 text-xs text-slate-500">模型：{summary.model ?? "—"}</div>
+        <div className="mt-2">
+          <a
+            href={exportHref}
+            download
+            className="inline-flex items-center rounded-full border border-cyan-200 bg-cyan-50 px-3 py-1.5 text-xs font-medium text-cyan-700 hover:bg-cyan-100"
+          >
+            导出会话 JSONL
+          </a>
+        </div>
         <div className="mt-3 grid gap-2 text-slate-600 sm:grid-cols-4">
           {tokenMetrics.map((metric) => (
             <div key={metric.label} className="rounded-2xl border border-slate-100 bg-white/50 p-2 text-xs">

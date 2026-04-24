@@ -1002,6 +1002,16 @@ async function findFileForSession(sessionId: string) {
   return null;
 }
 
+export async function resolveSessionFile(sessionId: string) {
+  await ensureFreshIndex();
+  const d = getDb();
+  const row = d.prepare("SELECT file FROM files WHERE session_id = ? LIMIT 1").get(sessionId) as
+    | { file?: string }
+    | undefined;
+  if (row?.file) return String(row.file);
+  return findFileForSession(sessionId);
+}
+
 async function buildTimeline(file: string, summary: SessionSummary): Promise<SessionTimelineResponse> {
   const events: TimelineEvent[] = [];
   let truncated = false;
