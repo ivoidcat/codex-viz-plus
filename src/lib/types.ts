@@ -100,11 +100,13 @@ export type SessionTimelineResponse = {
 };
 
 export type SessionBackupResponse = {
+  mode: "full" | "incremental";
   generatedAt: string;
   sourceDir: string;
   targetDir: string;
   totalFiles: number;
   copiedFiles: number;
+  skippedFiles: number;
   bytesCopied: number;
   note?: string;
 };

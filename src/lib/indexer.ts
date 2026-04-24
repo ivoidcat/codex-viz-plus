@@ -27,6 +27,19 @@ type TokenPricing = {
   output: number;
 };
 
+type BackupMode = "full" | "incremental";
+type BackupFileMeta = {
+  size: number;
+  mtimeMs: number;
+};
+type BackupManifest = {
+  version: 1;
+  generatedAt: string;
+  sourceDir: string;
+  mode: BackupMode;
+  files: Record<string, BackupFileMeta>;
+};
+
 const MODEL_PRICING: Record<string, TokenPricing> = {
   "gpt-5.4": { input: 2.5, cachedInput: 0.25, output: 15 },
   "gpt-5.4-mini": { input: 0.75, cachedInput: 0.075, output: 4.5 },
@@ -86,6 +99,23 @@ function expandUserPath(input: string) {
   return path.resolve(trimmed);
 }
 
+async function readBackupManifest(root: string): Promise<BackupManifest | null> {
+  const manifestPath = path.join(root, "codex-viz-backup.manifest.json");
+  const parsed = await readJsonFile<BackupManifest>(manifestPath);
+  if (!parsed || parsed.version !== 1 || typeof parsed.sourceDir !== "string" || !parsed.files) {
+    return null;
+  }
+  return parsed;
+}
+
+async function writeBackupManifest(root: string, manifest: BackupManifest) {
+  await writeJsonFile(path.join(root, "codex-viz-backup.manifest.json"), manifest);
+}
+
+function normalizeManifestSource(sourceDir: string) {
+  return path.resolve(sourceDir);
+}
+
 async function ensureDir(p: string) {
   await fsp.mkdir(p, { recursive: true });
 }
@@ -103,6 +133,14 @@ async function writeJsonFile(p: string, obj: unknown) {
   const tmp = `${p}.tmp`;
   await fsp.writeFile(tmp, JSON.stringify(obj, null, 2), "utf8");
   await fsp.rename(tmp, p);
+}
+
+async function statOrNull(file: string) {
+  try {
+    return await fsp.stat(file);
+  } catch {
+    return null;
+  }
 }
 
 async function listJsonlFiles(root: string) {
@@ -1029,7 +1067,10 @@ export async function resolveSessionFile(sessionId: string) {
   return findFileForSession(sessionId);
 }
 
-export async function backupAllSessions(targetDir: string): Promise<SessionBackupResponse> {
+export async function backupAllSessions(
+  targetDir: string,
+  options?: { mode?: BackupMode }
+): Promise<SessionBackupResponse> {
   await ensureFreshIndex();
   const sourceDir = path.resolve(getSessionsDir());
   const targetRoot = expandUserPath(targetDir);
@@ -1045,40 +1086,63 @@ export async function backupAllSessions(targetDir: string): Promise<SessionBacku
   const files = await listJsonlFiles(sourceDir);
   await ensureDir(resolvedTarget);
 
+  const mode: BackupMode = options?.mode ?? "incremental";
+  const prevManifest = mode === "incremental" ? await readBackupManifest(resolvedTarget) : null;
+  const canUsePrevManifest =
+    prevManifest && normalizeManifestSource(prevManifest.sourceDir) === sourceDir && prevManifest.files;
+
   let copiedFiles = 0;
+  let skippedFiles = 0;
   let bytesCopied = 0;
+  const manifestFiles: Record<string, BackupFileMeta> = {};
+
   for (const file of files) {
     const rel = path.relative(sourceDir, file);
     if (!rel || rel.startsWith("..") || path.isAbsolute(rel)) continue;
+
+    const st = await statOrNull(file);
+    if (!st) continue;
+
+    manifestFiles[rel] = { size: st.size, mtimeMs: st.mtimeMs };
     const dest = path.join(resolvedTarget, rel);
     await ensureDir(path.dirname(dest));
+
+    const prevMeta = canUsePrevManifest ? prevManifest.files[rel] : undefined;
+    const unchanged = !!prevMeta && prevMeta.size === st.size && prevMeta.mtimeMs === st.mtimeMs;
+    if (mode === "incremental" && unchanged) {
+      skippedFiles += 1;
+      continue;
+    }
+
     await fsp.copyFile(file, dest);
     copiedFiles += 1;
-    try {
-      const st = await fsp.stat(file);
-      bytesCopied += st.size;
-    } catch {
-      // ignore size errors, copy already succeeded
-    }
+    bytesCopied += st.size;
   }
 
-  await writeJsonFile(path.join(resolvedTarget, "codex-viz-backup.manifest.json"), {
-    generatedAt: new Date().toISOString(),
+  const generatedAt = new Date().toISOString();
+  await writeBackupManifest(resolvedTarget, {
+    version: 1,
+    generatedAt,
     sourceDir,
-    totalFiles: files.length,
-    copiedFiles,
-    bytesCopied,
-    note: "原始 jsonl 备份"
+    mode,
+    files: manifestFiles
   });
 
   return {
-    generatedAt: new Date().toISOString(),
+    mode,
+    generatedAt,
     sourceDir,
     targetDir: resolvedTarget,
     totalFiles: files.length,
     copiedFiles,
+    skippedFiles,
     bytesCopied,
-    note: "已按原目录结构备份原始 jsonl 文件"
+    note:
+      mode === "incremental" && !canUsePrevManifest
+        ? "未找到可用备份清单，已按全量方式处理"
+        : mode === "incremental"
+          ? "已按清单对比，仅复制新增或变更文件"
+          : "已按原目录结构全量备份原始 jsonl 文件"
   };
 }
 

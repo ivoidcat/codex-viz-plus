@@ -64,6 +64,7 @@ export default function SessionsTable() {
   const [q, setQ] = useState("");
   const [limit] = useState(100);
   const [offset, setOffset] = useState(0);
+  const [backupMode, setBackupMode] = useState<"full" | "incremental">("incremental");
   const [backupPath, setBackupPath] = useState("");
   const [restorePath, setRestorePath] = useState("");
   const [backupState, setBackupState] = useState<{
@@ -81,6 +82,8 @@ export default function SessionsTable() {
     try {
       const saved = window.localStorage.getItem("codex-viz-backup-path");
       if (saved) setBackupPath(saved);
+      const savedMode = window.localStorage.getItem("codex-viz-backup-mode");
+      if (savedMode === "full" || savedMode === "incremental") setBackupMode(savedMode);
       const restoreSaved = window.localStorage.getItem("codex-viz-restore-path");
       if (restoreSaved) setRestorePath(restoreSaved);
     } catch {
@@ -121,7 +124,7 @@ export default function SessionsTable() {
       const res = await fetch("/api/backup/sessions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ targetDir })
+        body: JSON.stringify({ targetDir, mode: backupMode })
       });
       const payload = (await res.json()) as SessionBackupResponse & { error?: string };
       if (!res.ok) {
@@ -129,6 +132,7 @@ export default function SessionsTable() {
       }
       try {
         window.localStorage.setItem("codex-viz-backup-path", targetDir);
+        window.localStorage.setItem("codex-viz-backup-mode", backupMode);
       } catch {
         // ignore
       }
@@ -193,12 +197,34 @@ export default function SessionsTable() {
       <div className="mb-4 rounded-2xl border border-cyan-100 bg-cyan-50/60 p-4">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
-            <div className="text-sm font-semibold text-cyan-950">全量备份</div>
+            <div className="text-sm font-semibold text-cyan-950">备份</div>
             <div className="mt-1 text-xs text-cyan-800/80">
-              把当前所有原始 jsonl 按目录结构复制到指定路径，适合迁移或重装前备份。
+              支持全量或增量备份，都会把原始 jsonl 按目录结构复制到指定路径。
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <div className="inline-flex items-center rounded-lg border border-cyan-200 bg-white p-1 text-xs">
+              <button
+                type="button"
+                onClick={() => setBackupMode("incremental")}
+                className={`rounded-md px-3 py-1.5 font-medium transition-colors ${
+                  backupMode === "incremental"
+                    ? "bg-cyan-600 text-white"
+                    : "text-cyan-800 hover:bg-cyan-50"
+                }`}
+              >
+                增量
+              </button>
+              <button
+                type="button"
+                onClick={() => setBackupMode("full")}
+                className={`rounded-md px-3 py-1.5 font-medium transition-colors ${
+                  backupMode === "full" ? "bg-cyan-600 text-white" : "text-cyan-800 hover:bg-cyan-50"
+                }`}
+              >
+                全量
+              </button>
+            </div>
             <input
               value={backupPath}
               onChange={(e) => setBackupPath(e.target.value)}
@@ -218,9 +244,10 @@ export default function SessionsTable() {
         <div className="mt-3 text-xs">
           {backupState.status === "success" && backupState.result ? (
             <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-emerald-800">
-              {backupState.message}：{backupState.result.copiedFiles}/{backupState.result.totalFiles} 个文件，{formatBytes(
-                backupState.result.bytesCopied
-              )}，目标：{backupState.result.targetDir}
+              {backupState.message}：{backupState.result.mode === "incremental" ? "增量" : "全量"}备份，复制{" "}
+              {backupState.result.copiedFiles}/{backupState.result.totalFiles} 个文件，跳过 {backupState.result.skippedFiles} 个，
+              {formatBytes(backupState.result.bytesCopied)}，目标：{backupState.result.targetDir}
+              {backupState.result.note ? `（${backupState.result.note}）` : ""}
             </div>
           ) : null}
           {backupState.status === "error" ? (
@@ -229,7 +256,7 @@ export default function SessionsTable() {
             </div>
           ) : null}
           {backupState.status === "idle" ? (
-            <div className="text-cyan-800/70">支持输入绝对路径或 `~/` 开头路径。</div>
+            <div className="text-cyan-800/70">支持输入绝对路径或 `~/` 开头路径。Windows 上可直接输入 `C:\...` 格式。</div>
           ) : null}
         </div>
 
