@@ -109,6 +109,17 @@ export type SessionBackupResponse = {
   note?: string;
 };
 
+export type SessionRestoreResponse = {
+  generatedAt: string;
+  sourceDir: string;
+  targetDir: string;
+  totalFiles: number;
+  restoredFiles: number;
+  skippedFiles: number;
+  bytesRestored: number;
+  note?: string;
+};
+
 export type WordCloudItem = {
   name: string;
   value: number;

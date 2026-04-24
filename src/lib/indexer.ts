@@ -12,6 +12,7 @@ import type {
   SessionTimelineResponse,
   SessionsListResponse,
   SessionBackupResponse,
+  SessionRestoreResponse,
   TimelineEvent,
   TokenUsage
 } from "@/lib/types";
@@ -76,6 +77,12 @@ function expandUserPath(input: string) {
   if (!trimmed) return "";
   if (trimmed === "~") return os.homedir();
   if (trimmed.startsWith("~/")) return path.join(os.homedir(), trimmed.slice(2));
+  if (/^[a-zA-Z]:[\\/]/.test(trimmed) || trimmed.startsWith("\\\\")) {
+    if (process.platform !== "win32") {
+      throw new Error("当前环境不是 Windows，无法使用 Windows 路径格式");
+    }
+    return trimmed;
+  }
   return path.resolve(trimmed);
 }
 
@@ -1072,6 +1079,71 @@ export async function backupAllSessions(targetDir: string): Promise<SessionBacku
     copiedFiles,
     bytesCopied,
     note: "已按原目录结构备份原始 jsonl 文件"
+  };
+}
+
+export async function restoreAllSessions(sourceDir: string): Promise<SessionRestoreResponse> {
+  await ensureFreshIndex();
+  const targetDir = path.resolve(getSessionsDir());
+  const sourceRoot = expandUserPath(sourceDir);
+  if (!sourceRoot) {
+    throw new Error("请提供备份路径");
+  }
+
+  const resolvedSource = path.resolve(sourceRoot);
+  if (resolvedSource === targetDir || resolvedSource.startsWith(`${targetDir}${path.sep}`)) {
+    throw new Error("备份源不能位于 sessions 目录内部");
+  }
+
+  const files = await listJsonlFiles(resolvedSource);
+  await ensureDir(targetDir);
+
+  let restoredFiles = 0;
+  let skippedFiles = 0;
+  let bytesRestored = 0;
+
+  for (const file of files) {
+    const rel = path.relative(resolvedSource, file);
+    if (!rel || rel.startsWith("..") || path.isAbsolute(rel)) continue;
+    const dest = path.join(targetDir, rel);
+    await ensureDir(path.dirname(dest));
+    try {
+      await fsp.access(dest);
+      skippedFiles += 1;
+      continue;
+    } catch {
+      // destination does not exist, continue restore
+    }
+    await fsp.copyFile(file, dest);
+    restoredFiles += 1;
+    try {
+      const st = await fsp.stat(file);
+      bytesRestored += st.size;
+    } catch {
+      // ignore size errors, copy already succeeded
+    }
+  }
+
+  await writeJsonFile(path.join(targetDir, "codex-viz-restore.manifest.json"), {
+    generatedAt: new Date().toISOString(),
+    sourceDir: resolvedSource,
+    targetDir,
+    totalFiles: files.length,
+    restoredFiles,
+    skippedFiles,
+    bytesRestored,
+    note: "已跳过目标中已存在的文件"
+  });
+
+  return {
+    generatedAt: new Date().toISOString(),
+    sourceDir: resolvedSource,
+    targetDir,
+    totalFiles: files.length,
+    restoredFiles,
+    skippedFiles,
+    bytesRestored,
+    note: "已按原目录结构恢复原始 jsonl 文件，目标中已存在的文件已跳过"
   };
 }
 

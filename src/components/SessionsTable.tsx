@@ -3,7 +3,12 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
-import type { SessionBackupResponse, SessionSummary, SessionsListResponse } from "@/lib/types";
+import type {
+  SessionBackupResponse,
+  SessionRestoreResponse,
+  SessionSummary,
+  SessionsListResponse
+} from "@/lib/types";
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
@@ -60,16 +65,24 @@ export default function SessionsTable() {
   const [limit] = useState(100);
   const [offset, setOffset] = useState(0);
   const [backupPath, setBackupPath] = useState("");
+  const [restorePath, setRestorePath] = useState("");
   const [backupState, setBackupState] = useState<{
     status: "idle" | "running" | "success" | "error";
     message: string;
     result?: SessionBackupResponse | null;
+  }>({ status: "idle", message: "" });
+  const [restoreState, setRestoreState] = useState<{
+    status: "idle" | "running" | "success" | "error";
+    message: string;
+    result?: SessionRestoreResponse | null;
   }>({ status: "idle", message: "" });
 
   useEffect(() => {
     try {
       const saved = window.localStorage.getItem("codex-viz-backup-path");
       if (saved) setBackupPath(saved);
+      const restoreSaved = window.localStorage.getItem("codex-viz-restore-path");
+      if (restoreSaved) setRestorePath(restoreSaved);
     } catch {
       // ignore localStorage errors
     }
@@ -128,6 +141,37 @@ export default function SessionsTable() {
     }
   };
 
+  const runRestore = async () => {
+    const sourceDir = restorePath.trim();
+    if (!sourceDir) {
+      setRestoreState({ status: "error", message: "请输入恢复来源路径" });
+      return;
+    }
+    setRestoreState({ status: "running", message: "正在恢复…" });
+    try {
+      const res = await fetch("/api/backup/restore", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sourceDir })
+      });
+      const payload = (await res.json()) as SessionRestoreResponse & { error?: string };
+      if (!res.ok) {
+        throw new Error(payload.error ?? "恢复失败");
+      }
+      try {
+        window.localStorage.setItem("codex-viz-restore-path", sourceDir);
+      } catch {
+        // ignore
+      }
+      setRestoreState({ status: "success", message: "恢复完成", result: payload });
+    } catch (error) {
+      setRestoreState({
+        status: "error",
+        message: error instanceof Error ? error.message : String(error)
+      });
+    }
+  };
+
   if (error) {
     return (
       <section className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
@@ -147,7 +191,7 @@ export default function SessionsTable() {
   return (
     <section className="rounded-xl border border-zinc-200 bg-white p-4">
       <div className="mb-4 rounded-2xl border border-cyan-100 bg-cyan-50/60 p-4">
-        <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
             <div className="text-sm font-semibold text-cyan-950">全量备份</div>
             <div className="mt-1 text-xs text-cyan-800/80">
@@ -187,6 +231,51 @@ export default function SessionsTable() {
           {backupState.status === "idle" ? (
             <div className="text-cyan-800/70">支持输入绝对路径或 `~/` 开头路径。</div>
           ) : null}
+        </div>
+
+        <div className="mt-5 border-t border-cyan-100 pt-4">
+          <div className="flex flex-wrap items-end justify-between gap-4">
+            <div>
+              <div className="text-sm font-semibold text-cyan-950">恢复备份</div>
+              <div className="mt-1 text-xs text-cyan-800/80">
+                从备份目录恢复到当前 sessions 目录，已存在的文件会自动跳过，不会重复恢复。
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                value={restorePath}
+                onChange={(e) => setRestorePath(e.target.value)}
+                placeholder="例如：~/Backups/codex-viz"
+                className="w-[320px] max-w-[75vw] rounded-lg border border-cyan-200 bg-white px-3 py-2 text-sm outline-none focus:border-cyan-400"
+              />
+              <button
+                type="button"
+                onClick={runRestore}
+                disabled={restoreState.status === "running"}
+                className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-700 disabled:opacity-60"
+              >
+                {restoreState.status === "running" ? "恢复中…" : "开始恢复"}
+              </button>
+            </div>
+          </div>
+          <div className="mt-3 text-xs">
+            {restoreState.status === "success" && restoreState.result ? (
+              <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-emerald-800">
+                {restoreState.message}：恢复 {restoreState.result.restoredFiles}/{restoreState.result.totalFiles}
+                个文件，跳过 {restoreState.result.skippedFiles} 个已存在文件，{formatBytes(
+                  restoreState.result.bytesRestored
+                )}，来源：{restoreState.result.sourceDir}
+              </div>
+            ) : null}
+            {restoreState.status === "error" ? (
+              <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-rose-700">
+                {restoreState.message}
+              </div>
+            ) : null}
+            {restoreState.status === "idle" ? (
+              <div className="text-cyan-800/70">支持输入绝对路径或 `~/` 开头路径。Windows 上可直接输入 `C:\...` 格式。</div>
+            ) : null}
+          </div>
         </div>
       </div>
 
