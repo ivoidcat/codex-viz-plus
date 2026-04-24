@@ -45,16 +45,6 @@ pnpm dev
 - `CODEX_SESSIONS_DIR`：默认 `~/.codex/sessions`
 - `CODEX_VIZ_CACHE_DIR`：默认 `~/.codex-viz/cache`
 
-## 仓库命名建议
-
-如果你打算保留这是“上游增强版”的定位，我建议仓库名和包名统一用：
-
-- 仓库名：`codex-viz-plus`
-- 项目名：`Codex Viz Plus`
-
-这个命名比 `Pro` 更自然，也不容易让人误会成商业版本。
-
 ## 说明
 
 本项目保留原始 MIT License 约束，详见 `LICENSE`。
-
