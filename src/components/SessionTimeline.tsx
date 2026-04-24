@@ -95,6 +95,16 @@ function formatUsd(value: number | null | undefined) {
   return `$${value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`;
 }
 
+function formatUsdPer1M(value: number | null | undefined) {
+  if (value == null) return "—";
+  return `$${value.toLocaleString("en-US", { minimumFractionDigits: 3, maximumFractionDigits: 3 })}/1M`;
+}
+
+function formatPercent(value: number | null | undefined) {
+  if (value == null) return "—";
+  return `${(value * 100).toLocaleString("zh-CN", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`;
+}
+
 function renderTokenUsageLine(prefix: string, usage?: TokenUsage | null) {
   if (!usage) return null;
   return (
@@ -169,6 +179,7 @@ export default function SessionTimeline({ sessionId }: { sessionId: string }) {
   }
 
   const summary = data.summary;
+  const cost = summary.costBreakdown;
   const tokenMetrics: Array<{
     label: string;
     value: number | null | undefined;
@@ -179,6 +190,18 @@ export default function SessionTimeline({ sessionId }: { sessionId: string }) {
     { label: "输出 Token", value: summary.tokensOutput },
     { label: "预估费用", value: summary.estimatedCostUsd, format: formatUsd }
   ];
+  const costMetrics = cost
+    ? [
+        { label: "缓存输入", value: cost.cachedInputTokens },
+        { label: "缓存比例", value: cost.cachedInputRatio, format: formatPercent },
+        { label: "未缓存单价", value: cost.inputPricePer1M, format: formatUsdPer1M },
+        { label: "缓存单价", value: cost.cachedInputPricePer1M, format: formatUsdPer1M },
+        { label: "输出单价", value: cost.outputPricePer1M, format: formatUsdPer1M },
+        { label: "未缓存费用", value: cost.nonCachedInputCostUsd, format: formatUsd },
+        { label: "缓存费用", value: cost.cachedInputCostUsd, format: formatUsd },
+        { label: "输出费用", value: cost.outputCostUsd, format: formatUsd }
+      ]
+    : [];
 
   return (
     <section className="space-y-3">
@@ -208,8 +231,42 @@ export default function SessionTimeline({ sessionId }: { sessionId: string }) {
           ))}
         </div>
         <div className="mt-1 text-[11px] text-slate-500">
-          缓存输入：{formatCount(summary.tokensCachedInput)} · 推理输出：{formatCount(
-            summary.tokensReasoningOutput
+          缓存输入：{formatCount(summary.tokensCachedInput)} · 缓存命中率：{formatPercent(
+            cost?.cachedInputRatio ?? null
+          )} · 推理输出：{formatCount(summary.tokensReasoningOutput)}
+        </div>
+        <div className="mt-3 rounded-2xl border border-slate-100 bg-white/50 p-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <div className="text-[11px] uppercase tracking-[0.2em] text-slate-400">费用拆分</div>
+              <div className="mt-1 text-sm font-semibold text-slate-800">
+                {cost ? formatUsd(cost.totalCostUsd) : "无公开价格，未统计"}
+              </div>
+            </div>
+            <div className="text-[11px] text-slate-500">
+              {cost ? "缓存输入按缓存单价计费，未缓存输入按普通输入单价计费" : "当前模型没有对应公开价格"}
+            </div>
+          </div>
+          {cost ? (
+            <>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                {costMetrics.map((metric) => (
+                  <div key={metric.label} className="rounded-xl border border-slate-100 bg-white p-2 text-xs">
+                    <div className="text-[11px] text-slate-500">{metric.label}</div>
+                    <div className="tabular-nums text-sm font-semibold text-slate-800">
+                      {metric.format ? metric.format(metric.value) : formatCount(metric.value)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-2 text-[11px] text-slate-500">
+                总费用 = 未缓存费用 {formatUsd(cost.nonCachedInputCostUsd)} + 缓存费用 {formatUsd(
+                  cost.cachedInputCostUsd
+                )} + 输出费用 {formatUsd(cost.outputCostUsd)} = {formatUsd(cost.totalCostUsd)}
+              </div>
+            </>
+          ) : (
+            <div className="mt-2 text-[11px] text-slate-500">未命中公开价格模型，因此不统计费用。</div>
           )}
         </div>
       </div>
