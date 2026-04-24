@@ -1,8 +1,17 @@
 # Codex Viz Plus
 
+## 预览
+
+### 首页
+
 <p align="center">
-  <img src="./docs/preview/home.png" alt="首页预览" width="49%" />
-  <img src="./docs/preview/sessions.png" alt="会话列表预览" width="49%" />
+  <img src="./docs/preview/home.png" alt="首页预览" width="100%" />
+</p>
+
+### 会话列表
+
+<p align="center">
+  <img src="./docs/preview/sessions.png" alt="会话列表预览" width="100%" />
 </p>
 
 Codex Viz Plus 是基于 [onewesong/codex-viz](https://github.com/onewesong/codex-viz) 改造的本地会话分析面板。
