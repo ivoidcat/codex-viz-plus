@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
 import type {
   SessionBackupResponse,
@@ -367,73 +367,83 @@ export default function SessionsTable() {
       </div>
 
       <div className="mt-3 overflow-x-auto">
-        <table className="min-w-[1500px] w-full table-fixed border-separate border-spacing-y-2 text-sm">
+        <table className="w-full min-w-[980px] table-fixed border-separate border-spacing-y-2 text-sm">
           <thead>
-            <tr className="text-left text-zinc-600">
-              <th className="w-[150px] px-2">开始</th>
-              <th className="w-[90px] px-2">时长</th>
-              <th className="w-[70px] px-2">消息</th>
-              <th className="w-[70px] px-2">工具</th>
-              <th className="w-[70px] px-2">错误</th>
-              <th className="w-[150px] px-2">模型</th>
-              <th className="w-[120px] px-2">Token</th>
-              <th className="w-[120px] px-2">费用</th>
-              <th className="w-[300px] px-2">费用明细</th>
-              <th className="w-[300px] px-2">cwd</th>
-              <th className="w-[88px] px-2">操作</th>
+            <tr className="sticky top-0 z-20 text-left text-zinc-600">
+              <th className="w-[140px] bg-white/95 px-2 py-3 backdrop-blur">开始</th>
+              <th className="w-[90px] bg-white/95 px-2 py-3 backdrop-blur">时长</th>
+              <th className="w-[70px] bg-white/95 px-2 py-3 backdrop-blur">消息</th>
+              <th className="w-[70px] bg-white/95 px-2 py-3 backdrop-blur">工具</th>
+              <th className="w-[70px] bg-white/95 px-2 py-3 backdrop-blur">错误</th>
+              <th className="w-[150px] bg-white/95 px-2 py-3 backdrop-blur">模型</th>
+              <th className="w-[120px] bg-white/95 px-2 py-3 backdrop-blur">Token</th>
+              <th className="w-[120px] bg-white/95 px-2 py-3 backdrop-blur">费用</th>
+              <th className="w-[88px] bg-white/95 px-2 py-3 backdrop-blur">操作</th>
             </tr>
           </thead>
           <tbody>
             {sessions.length === 0 ? (
               <tr>
-                <td className="px-2 py-6 text-zinc-500" colSpan={11}>
+                <td className="px-2 py-6 text-zinc-500" colSpan={9}>
                   没有匹配的会话。
                 </td>
               </tr>
             ) : (
               sessions.map((s: SessionSummary) => (
-                <tr key={s.id} className="rounded-lg bg-zinc-50 text-zinc-800">
-                  <td className="px-2 py-2 tabular-nums">{formatDate(s.startedAt)}</td>
-                  <td className="px-2 py-2 tabular-nums">{formatSec(s.durationSec ?? null)}</td>
-                  <td className="px-2 py-2 tabular-nums">{s.messages ?? 0}</td>
-                  <td className="px-2 py-2 tabular-nums">{s.toolCalls ?? 0}</td>
-                  <td className="px-2 py-2 tabular-nums">{s.errors ?? 0}</td>
-                  <td className="px-2 py-2 max-w-[180px] truncate text-zinc-600">{s.model ?? "—"}</td>
-                  <td className="px-2 py-2 tabular-nums text-zinc-600">{formatTokens(s.tokensTotal)}</td>
-                  <td className="px-2 py-2 tabular-nums text-zinc-700">{formatUsd(s.estimatedCostUsd)}</td>
-                  <td className="px-2 py-2 align-top">
-                    {s.costBreakdown ? (
-                      <div className="space-y-1 break-words text-[11px] leading-4 text-zinc-600">
-                        <div>
-                          缓存 {formatPercent(s.costBreakdown.cachedInputRatio)} ({formatTokens(
-                            s.costBreakdown.cachedInputTokens
-                          )} / {formatTokens(s.tokensInput)})
+                <Fragment key={s.id}>
+                  <tr className="rounded-lg bg-zinc-50 text-zinc-800">
+                    <td className="px-2 py-2 tabular-nums">{formatDate(s.startedAt)}</td>
+                    <td className="px-2 py-2 tabular-nums">{formatSec(s.durationSec ?? null)}</td>
+                    <td className="px-2 py-2 tabular-nums">{s.messages ?? 0}</td>
+                    <td className="px-2 py-2 tabular-nums">{s.toolCalls ?? 0}</td>
+                    <td className="px-2 py-2 tabular-nums">{s.errors ?? 0}</td>
+                    <td className="px-2 py-2 max-w-[180px] truncate text-zinc-600">{s.model ?? "—"}</td>
+                    <td className="px-2 py-2 tabular-nums text-zinc-600">{formatTokens(s.tokensTotal)}</td>
+                    <td className="px-2 py-2 tabular-nums text-zinc-700">{formatUsd(s.estimatedCostUsd)}</td>
+                    <td className="px-2 py-2">
+                      <Link
+                        className="inline-flex whitespace-nowrap rounded-md border border-zinc-200 bg-white px-2 py-1 text-xs hover:bg-zinc-50"
+                        href={`/sessions/${encodeURIComponent(s.id)}`}
+                      >
+                        查看
+                      </Link>
+                    </td>
+                  </tr>
+                  <tr className="bg-white text-zinc-600">
+                    <td className="px-2 pb-3 pt-0 text-xs" colSpan={9}>
+                      <div className="grid gap-2 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
+                        <div className="rounded-lg border border-zinc-100 bg-zinc-50 px-3 py-2 text-xs break-words">
+                          <div className="mb-1 text-[11px] uppercase tracking-[0.16em] text-zinc-400">cwd</div>
+                          <div className="whitespace-normal break-all text-zinc-700">{s.cwd ?? "—"}</div>
                         </div>
-                        <div>
-                          单价 U {formatUsdPer1M(s.costBreakdown.inputPricePer1M)} C{" "}
-                          {formatUsdPer1M(s.costBreakdown.cachedInputPricePer1M)} O{" "}
-                          {formatUsdPer1M(s.costBreakdown.outputPricePer1M)}
-                        </div>
-                        <div>
-                          费用 U {formatUsd(s.costBreakdown.nonCachedInputCostUsd)} + C{" "}
-                          {formatUsd(s.costBreakdown.cachedInputCostUsd)} + O{" "}
-                          {formatUsd(s.costBreakdown.outputCostUsd)} = {formatUsd(s.costBreakdown.totalCostUsd)}
+                        <div className="rounded-lg border border-zinc-100 bg-zinc-50 px-3 py-2 text-xs break-words">
+                          <div className="mb-1 text-[11px] uppercase tracking-[0.16em] text-zinc-400">费用明细</div>
+                          {s.costBreakdown ? (
+                            <div className="space-y-1 leading-4">
+                              <div>
+                                缓存 {formatPercent(s.costBreakdown.cachedInputRatio)} ({formatTokens(
+                                  s.costBreakdown.cachedInputTokens
+                                )} / {formatTokens(s.tokensInput)})
+                              </div>
+                              <div>
+                                单价 U {formatUsdPer1M(s.costBreakdown.inputPricePer1M)} C{" "}
+                                {formatUsdPer1M(s.costBreakdown.cachedInputPricePer1M)} O{" "}
+                                {formatUsdPer1M(s.costBreakdown.outputPricePer1M)}
+                              </div>
+                              <div>
+                                费用 U {formatUsd(s.costBreakdown.nonCachedInputCostUsd)} + C{" "}
+                                {formatUsd(s.costBreakdown.cachedInputCostUsd)} + O{" "}
+                                {formatUsd(s.costBreakdown.outputCostUsd)} = {formatUsd(s.costBreakdown.totalCostUsd)}
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="text-zinc-400">无公开价格，未统计</span>
+                          )}
                         </div>
                       </div>
-                    ) : (
-                      <span className="text-zinc-400">无公开价格，未统计</span>
-                    )}
-                  </td>
-                  <td className="px-2 py-2 max-w-[320px] truncate text-zinc-600">{s.cwd ?? "—"}</td>
-                  <td className="px-2 py-2">
-                    <Link
-                      className="inline-flex whitespace-nowrap rounded-md border border-zinc-200 bg-white px-2 py-1 text-xs hover:bg-zinc-50"
-                      href={`/sessions/${encodeURIComponent(s.id)}`}
-                    >
-                      查看
-                    </Link>
-                  </td>
-                </tr>
+                    </td>
+                  </tr>
+                </Fragment>
               ))
             )}
           </tbody>
