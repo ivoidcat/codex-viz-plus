@@ -15,6 +15,13 @@ function formatInt(n: number) {
   return Intl.NumberFormat("zh-CN").format(n);
 }
 
+function formatMillions(n: number) {
+  return `${(n / 1_000_000).toLocaleString("zh-CN", {
+    minimumFractionDigits: n >= 10_000_000 ? 0 : 1,
+    maximumFractionDigits: 1
+  })}M`;
+}
+
 function clamp(n: number, min: number, max: number) {
   return Math.min(Math.max(n, min), max);
 }
@@ -214,11 +221,12 @@ export default function Dashboard() {
           <div className="mt-4 flex flex-wrap items-end justify-between gap-2">
             <div className="mono text-3xl font-semibold text-slate-900">{formatInt(stats.tokensTotal)}</div>
             <span className="max-w-full rounded-full border border-cyan-200 bg-cyan-50 px-2 py-1 text-[11px] text-cyan-700">
-              Prompt {formatInt(stats.tokensInput)}
+              Prompt {formatMillions(stats.tokensInput)}
             </span>
           </div>
           <div className="mt-3 text-xs text-slate-500">
-            缓存 {formatInt(stats.tokensCachedInput)} · 输出 {formatInt(stats.tokensOutput)}
+            缓存 {formatMillions(stats.tokensCachedInput)} · 输出 {formatMillions(stats.tokensOutput)} · 总计{" "}
+            {formatMillions(stats.tokensTotal)}
           </div>
         </div>
 
