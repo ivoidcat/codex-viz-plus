@@ -41,6 +41,8 @@ type BackupManifest = {
 };
 
 const MODEL_PRICING: Record<string, TokenPricing> = {
+  "gpt-5.5": { input: 5, cachedInput: 0.5, output: 30 },
+  "gpt-5.5-pro": { input: 30, cachedInput: 30, output: 180 },
   "gpt-5.4": { input: 2.5, cachedInput: 0.25, output: 15 },
   "gpt-5.4-mini": { input: 0.75, cachedInput: 0.075, output: 4.5 },
   "gpt-5.4-nano": { input: 0.2, cachedInput: 0.02, output: 1.25 },
